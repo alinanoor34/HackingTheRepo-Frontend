@@ -47,6 +47,7 @@ export interface Job {
   branchName: string;
   prTitle?: string;
   prUrl?: string;
+  previewBeforePush?: boolean;
   status: JobStatus | string;
   createdAt: string;
   startedAt?: string;

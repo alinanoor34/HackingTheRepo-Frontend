@@ -32,19 +32,57 @@ function uid(prefix = "n"): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
+/** Has this job just reached a state the user should be told about? */
+function classifyTransition(
+  prevStatus: string,
+  job: Job
+): { title: string; body: string; kind: NotificationKind } | null {
+  const { status, _id: id, previewBeforePush, prUrl } = job;
+
+  if (status === prevStatus) return null;
+
+  if (status === "failed") {
+    return {
+      title: "Job failed",
+      body: `Job ${id.slice(-6)} failed — check the job details`,
+      kind: "error",
+    };
+  }
+
+  if (status === "completed") {
+    // Preview was requested and no PR has been opened yet → needs the
+    // user's review before RepoMind will open the PR.
+    if (previewBeforePush && !prUrl) {
+      return {
+        title: "Review requested",
+        body: `Job ${id.slice(-6)} finished a preview — review the diff to open the PR`,
+        kind: "warning",
+      };
+    }
+    return {
+      title: "Job completed",
+      body: `Job ${id.slice(-6)} completed successfully`,
+      kind: "success",
+    };
+  }
+
+  return null;
+}
+
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const jobsRef = useRef<Record<string, string>>({}); // jobId -> status
+  const initializedRef = useRef(false);
 
   const addNotification = (n: Omit<Notification, "id" | "read">) => {
     const note: Notification = { id: uid(), read: false, ...n };
     setNotifications((s) => [note, ...s].slice(0, 50));
   };
 
-  const markRead = (id: string) => setNotifications((s) => s.map((n) => (n.id === id ? { ...n, read: true } : n)));
+  const markRead = (id: string) =>
+    setNotifications((s) => s.map((n) => (n.id === id ? { ...n, read: true } : n)));
   const clear = () => setNotifications([]);
 
-  // Poll jobs and detect status transitions
   useEffect(() => {
     let cancelled = false;
 
@@ -53,53 +91,42 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         const { data } = await api.get("/jobs");
         const jobs = (data as Job[]) || [];
 
-        // build map
         const nextMap: Record<string, string> = {};
         jobs.forEach((j) => (nextMap[j._id] = j.status));
 
-        // compare with previous
-        Object.entries(nextMap).forEach(([id, status]) => {
-          const prev = jobsRef.current[id];
-          if (!prev) {
-            // new job, skip
-            return;
-          }
-          if (prev !== status) {
-            // transition detected
-            if (status === "completed") {
-              addNotification({ title: "Job completed", body: `Job ${id} completed successfully`, kind: "success", meta: { jobId: id } });
-            } else if (status === "failed") {
-              addNotification({ title: "Job failed", body: `Job ${id} failed — check the job details`, kind: "error", meta: { jobId: id } });
-            } else if (status === "running" && (prev === "completed" || prev === "failed" || prev === "queued")) {
-              addNotification({ title: "Job running", body: `Job ${id} is running (including refinements)`, kind: "info", meta: { jobId: id } });
-            } else if (status === "refined") {
-              addNotification({ title: "Review requested", body: `Job ${id} needs review or changes`, kind: "info", meta: { jobId: id } });
-            }
+        if (!initializedRef.current) {
+          // First load: just snapshot current state, never notify —
+          // avoids a wall of notifications firing on every page load.
+          jobsRef.current = nextMap;
+          initializedRef.current = true;
+          return;
+        }
+
+        jobs.forEach((job) => {
+          const prev = jobsRef.current[job._id];
+          if (prev === undefined) return; // brand-new job, no transition to report
+
+          const result = classifyTransition(prev, job);
+          if (result) {
+            addNotification({ ...result, meta: { jobId: job._id } });
           }
         });
 
-        // store snapshot
         jobsRef.current = nextMap;
       } catch {
-        // ignore polling errors
+        // ignore polling errors — don't spam notifications for network blips
       }
     };
 
-    // initial load to populate ref without notifications
-    (async () => {
-      try {
-        const { data } = await api.get("/jobs");
-        const jobs = (data as Job[]) || [];
-        const map: Record<string, string> = {};
-        jobs.forEach((j) => (map[j._id] = j.status));
-        jobsRef.current = map;
-      } catch {
-        // ignore initial polling errors
-      }
-    })();
+    check(); // run immediately (handles the initial snapshot too)
+    const iv = setInterval(() => {
+      if (!cancelled) check();
+    }, 8000);
 
-    const iv = setInterval(() => { if (!cancelled) check(); }, 8000);
-    return () => { cancelled = true; clearInterval(iv); };
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+    };
   }, []);
 
   return (
