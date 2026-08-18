@@ -45,6 +45,7 @@ export default defineConfig({
       "/metrics": {
         target: "http://localhost:9100",
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/metrics/, ""),
         configure: (proxy) => {
           let warned = false;
           proxy.on("error", (_err, _req, res) => {
