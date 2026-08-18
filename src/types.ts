@@ -19,10 +19,7 @@ export interface LocalUser extends AuthUser {
 }
 
 export interface AuthResponse {
-  token: string;
   user: AuthUser | null;
-  githubUsername?: string;
-  githubToken?: string;
 }
 
 export interface ApiErrorResponse {

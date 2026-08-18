@@ -1,11 +1,10 @@
 import {
-  useEffect,
   useState,
   type FormEventHandler,
   type ReactElement,
   type ReactNode,
 } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { GITHUB_OAUTH_ENABLED, useAuth } from "../context/AuthContext";
 import ThemeToggle from "../components/ThemeToggle";
 import "./AuthPage.css";
@@ -147,52 +146,12 @@ export function SignupPage(): ReactElement {
   );
 }
 
-export function GithubCallbackPage(): ReactElement {
-  const { completeGithubLogin } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-
-    completeGithubLogin(location.search)
-      .then(() => {
-        if (!cancelled) navigate("/dashboard", { replace: true });
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(getErrorMessage(err, "GitHub sign-in failed"));
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [completeGithubLogin, location.search, navigate]);
-
-  return (
-    <AuthLayout title="Signing you in" sub="Completing GitHub authentication">
-      {error ? (
-        <>
-          <div className="auth-error">{error}</div>
-          <button
-            type="button"
-            className="btn-primary auth-submit"
-            onClick={() => navigate("/login", { replace: true })}
-          >
-            Back to sign in
-          </button>
-        </>
-      ) : (
-        <div className="auth-loading-panel" role="status" aria-live="polite">
-          <span className="spinner" aria-hidden="true" />
-          <span>Connecting GitHub...</span>
-        </div>
-      )}
-    </AuthLayout>
-  );
-}
+/**
+ * GithubCallbackPage removed: GitHub OAuth is now a pure server-side redirect.
+ * GitHub sends the browser to the BACKEND's /api/auth/github/callback, which
+ * sets the httpOnly session cookie and redirects straight to /dashboard —
+ * there is no frontend callback route or page anymore. See routes/auth.js.
+ */
 
 function GithubButton({
   label,

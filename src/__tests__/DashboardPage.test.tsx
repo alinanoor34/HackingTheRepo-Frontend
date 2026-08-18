@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import DashboardPage from "../pages/DashboardPage";
 import { AuthProvider } from "../context/AuthContext";
 import { ThemeProvider } from "../context/ThemeContext";
-import api, { TOKEN_KEY, USER_KEY } from "../utils/api";
+import api, { USER_KEY } from "../utils/api";
 
 vi.mock("../utils/api", async () => {
   const actual = await vi.importActual<typeof import("../utils/api")>("../utils/api");
@@ -26,7 +26,9 @@ vi.mock("../utils/metrics", () => ({ sendMetricEvent: vi.fn() }));
 describe("DashboardPage", () => {
   beforeEach(() => {
     localStorage.clear();
-    localStorage.setItem(TOKEN_KEY, "jwt");
+    // No token seeding needed — AuthContext now establishes the session by
+    // calling GET /auth/me on mount (mocked below), matching the real
+    // cookie-based flow where the browser sends the httpOnly cookie itself.
     localStorage.setItem(
       USER_KEY,
       JSON.stringify({ id: "1", username: "alice", email: "a@example.com" }),

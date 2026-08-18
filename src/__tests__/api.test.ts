@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import api, { TOKEN_KEY, USER_KEY, clearSession } from "../utils/api";
+import api, { USER_KEY, clearSession } from "../utils/api";
 
 vi.mock("../utils/metrics", () => ({
   sendMetricEvent: vi.fn(),
@@ -11,9 +11,11 @@ describe("api interceptor", () => {
     localStorage.clear();
   });
 
-  it("attaches Authorization Bearer from rm_token", async () => {
-    localStorage.setItem(TOKEN_KEY, "abc.jwt.token");
+  it("sends the httpOnly session cookie with every request", () => {
+    expect(api.defaults.withCredentials).toBe(true);
+  });
 
+  it("does not attach a manual Authorization header (session is cookie-based)", async () => {
     const handlers = api.interceptors.request as unknown as {
       handlers: Array<{ fulfilled?: (config: Record<string, unknown>) => Record<string, unknown> }>;
     };
@@ -26,27 +28,10 @@ describe("api interceptor", () => {
       method: "get",
     });
 
-    expect((config.headers as Record<string, string>).Authorization).toBe(
-      "Bearer abc.jwt.token",
-    );
-  });
-
-  it("skips Authorization when token missing", async () => {
-    const handlers = api.interceptors.request as unknown as {
-      handlers: Array<{ fulfilled?: (config: Record<string, unknown>) => Record<string, unknown> }>;
-    };
-    const requestHandler = handlers.handlers.find((h) => h.fulfilled)?.fulfilled;
-    const config = await requestHandler!({
-      headers: {},
-      url: "/jobs",
-      method: "get",
-    });
-
     expect((config.headers as Record<string, string>).Authorization).toBeUndefined();
   });
 
-  it("clears session on 401 response", async () => {
-    localStorage.setItem(TOKEN_KEY, "abc");
+  it("clears cached user on 401 response", async () => {
     localStorage.setItem(USER_KEY, JSON.stringify({ id: "1" }));
 
     const handlers = api.interceptors.response as unknown as {
@@ -64,7 +49,6 @@ describe("api interceptor", () => {
       }),
     ).rejects.toBeTruthy();
 
-    expect(localStorage.getItem(TOKEN_KEY)).toBeNull();
     expect(localStorage.getItem(USER_KEY)).toBeNull();
   });
 });
