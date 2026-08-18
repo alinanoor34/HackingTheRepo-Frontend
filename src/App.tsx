@@ -11,7 +11,6 @@ import Layout from "./components/Layout";
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
-import { GithubCallbackPage } from "./pages/AuthPages";
 import DashboardPage from "./pages/DashboardPage";
 import NewJobPage from "./pages/NewJobPage";
 import JobDetailPage from "./pages/JobDetailPage";
@@ -65,10 +64,6 @@ export default function App(): ReactElement {
                     <LandingPage />
                   </PublicRoute>
                 }
-              />
-              <Route
-                path="/auth/github/callback"
-                element={<GithubCallbackPage />}
               />
               <Route
                 path="/login"

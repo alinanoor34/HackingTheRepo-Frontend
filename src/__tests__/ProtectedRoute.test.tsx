@@ -3,7 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { ThemeProvider } from "../context/ThemeContext";
-import api, { TOKEN_KEY, USER_KEY } from "../utils/api";
+import api, {USER_KEY } from "../utils/api";
 import type { ReactElement } from "react";
 
 vi.mock("../utils/api", async () => {
@@ -62,7 +62,6 @@ describe("protected routing", () => {
   });
 
   it("allows authenticated users", async () => {
-    localStorage.setItem(TOKEN_KEY, "jwt");
     localStorage.setItem(
       USER_KEY,
       JSON.stringify({ id: "1", username: "a", email: "a@example.com" }),

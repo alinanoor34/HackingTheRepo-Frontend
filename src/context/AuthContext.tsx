@@ -5,13 +5,8 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
-import api, { TOKEN_KEY, USER_KEY, clearSession } from "../utils/api";
+import api, { USER_KEY, clearSession } from "../utils/api";
 import type { ApiErrorResponse, AuthResponse, AuthUser, LocalUser } from "../types";
-
-interface GithubOAuthSettings {
-  githubUsername: string;
-  githubToken: string;
-}
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -19,7 +14,6 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<AuthResponse>;
   signup: (username: string, email: string, password: string) => Promise<AuthResponse>;
   loginWithGithub: () => void;
-  completeGithubLogin: (search: string) => Promise<AuthResponse>;
   logout: () => void;
   refreshUser: () => Promise<AuthUser | null>;
 }
@@ -31,11 +25,9 @@ interface AuthProviderProps {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const STORAGE_KEYS = {
-  token: TOKEN_KEY,
   user: USER_KEY,
   users: "rm_users",
-  githubOAuthState: "rm_github_oauth_state",
-  pendingGithubSettings: "rm_pending_github_settings",
+  localSession: "rm_local_session",
 };
 
 const DEMO_USER = {
@@ -67,19 +59,6 @@ function getApiOrigin(): string {
   return new URL(baseURL, window.location.origin).toString().replace(/\/$/, "");
 }
 
-function decodeJsonParam<T>(value: string | null): T | null {
-  if (!value) return null;
-  try {
-    return JSON.parse(decodeURIComponent(value)) as T;
-  } catch {
-    try {
-      return JSON.parse(value) as T;
-    } catch {
-      return null;
-    }
-  }
-}
-
 function stripSensitive(
   user: (AuthUser & { password?: string }) | null | undefined
 ): AuthUser | null {
@@ -89,10 +68,8 @@ function stripSensitive(
   return safeUser;
 }
 
-function persistSession(token: string | undefined, user: AuthUser | null): void {
-  if (token) {
-    localStorage.setItem(STORAGE_KEYS.token, token);
-  }
+/** Persist the cached user only — the session itself lives in the httpOnly cookie. */
+function persistSession(user: AuthUser | null): void {
   if (user) {
     writeJson(STORAGE_KEYS.user, user);
   }
@@ -120,14 +97,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   useEffect(() => {
     const cachedUser = readJson<AuthUser | null>(STORAGE_KEYS.user, null);
-    const token = localStorage.getItem(STORAGE_KEYS.token);
+    const isLocalSession = localStorage.getItem(STORAGE_KEYS.localSession) === "true";
 
-    if (!token) {
-      clearSession();
-      setLoading(false);
-      return;
-    }
-
+    // No way to know if a real cookie session exists without asking the server —
+    // httpOnly cookies aren't readable from JS. Always check /auth/me on mount.
     api
       .get("/auth/me")
       .then((r) => {
@@ -138,12 +111,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
       })
       .catch((error: unknown) => {
-        if (shouldUseLocalFallback(error) && cachedUser) {
+        if (isLocalSession && shouldUseLocalFallback(error) && cachedUser) {
           setUser(cachedUser);
           return;
         }
 
         clearSession();
+        localStorage.removeItem(STORAGE_KEYS.localSession);
         setUser(null);
       })
       .finally(() => setLoading(false));
@@ -153,9 +127,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       const { data } = await api.post("/auth/login", { email, password });
       const nextUser = stripSensitive(data.user as LocalUser | AuthUser);
-      persistSession(data.token, nextUser);
+      localStorage.removeItem(STORAGE_KEYS.localSession);
+      persistSession(nextUser);
       setUser(nextUser);
-      return { ...data, user: nextUser };
+      return { user: nextUser };
     } catch (error: unknown) {
       if (!shouldUseLocalFallback(error)) throw error;
 
@@ -171,10 +146,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
 
       const nextUser = stripSensitive(match);
-      const token = `local-${match.id}`;
-      persistSession(token, nextUser);
+      localStorage.setItem(STORAGE_KEYS.localSession, "true");
+      persistSession(nextUser);
       setUser(nextUser);
-      return { token, user: nextUser };
+      return { user: nextUser };
     }
   };
 
@@ -186,9 +161,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       const { data } = await api.post("/auth/signup", { username, email, password });
       const nextUser = stripSensitive(data.user as LocalUser | AuthUser);
-      persistSession(data.token, nextUser);
+      localStorage.removeItem(STORAGE_KEYS.localSession);
+      persistSession(nextUser);
       setUser(nextUser);
-      return { ...data, user: nextUser };
+      return { user: nextUser };
     } catch (error: unknown) {
       if (!shouldUseLocalFallback(error)) throw error;
 
@@ -207,37 +183,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       localUsers.push(nextUser);
       writeJson(STORAGE_KEYS.users, localUsers);
-      const token = `local-${nextUser.id}`;
       const safeUser = stripSensitive(nextUser);
-      persistSession(token, safeUser);
+      localStorage.setItem(STORAGE_KEYS.localSession, "true");
+      persistSession(safeUser);
       setUser(safeUser);
-      return { token, user: safeUser };
-    }
-  };
-
-  const persistGithubSettings = async (
-    githubUsername?: string,
-    githubToken?: string
-  ): Promise<void> => {
-    if (!githubUsername && !githubToken) return;
-
-    const pendingSettings: GithubOAuthSettings = {
-      githubUsername: githubUsername ?? "",
-      githubToken: githubToken ?? "",
-    };
-    writeJson(STORAGE_KEYS.pendingGithubSettings, pendingSettings);
-
-    if (!githubToken) return;
-
-    try {
-      await api.put("/settings", {
-        githubUsername: githubUsername ?? "",
-        githubToken,
-        openaiKey: "",
-      });
-      localStorage.removeItem(STORAGE_KEYS.pendingGithubSettings);
-    } catch {
-      // Keep pending settings so Settings can apply them after the session is ready.
+      return { user: safeUser };
     }
   };
 
@@ -246,65 +196,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
       throw new Error("GitHub OAuth is not enabled yet.");
     }
 
-    const state = crypto.randomUUID();
-    sessionStorage.setItem(STORAGE_KEYS.githubOAuthState, state);
-
-    const callbackUrl = `${window.location.origin}/auth/github/callback`;
-    const githubLoginUrl = new URL(`${getApiOrigin()}/auth/github`);
-    githubLoginUrl.searchParams.set("redirect_uri", callbackUrl);
-    githubLoginUrl.searchParams.set("state", state);
-
-    window.location.assign(githubLoginUrl.toString());
-  };
-
-  const completeGithubLogin = async (search: string): Promise<AuthResponse> => {
-    const params = new URLSearchParams(search);
-    const error = params.get("error");
-    if (error) {
-      throw new Error(params.get("error_description") || error);
-    }
-
-    const returnedState = params.get("state");
-    const expectedState = sessionStorage.getItem(STORAGE_KEYS.githubOAuthState);
-    if (expectedState && returnedState && returnedState !== expectedState) {
-      throw new Error("GitHub sign-in state did not match. Please try again.");
-    }
-    sessionStorage.removeItem(STORAGE_KEYS.githubOAuthState);
-
-    let data: AuthResponse;
-    const code = params.get("code");
-    if (code) {
-      const response = await api.post<AuthResponse>("/auth/github/callback", {
-        code,
-        state: returnedState,
-        redirectUri: `${window.location.origin}/auth/github/callback`,
-      });
-      data = response.data;
-    } else {
-      const token = params.get("token");
-      const userPayload = decodeJsonParam<AuthUser>(params.get("user"));
-      if (!token || !userPayload) {
-        throw new Error("GitHub sign-in response was missing a user session.");
-      }
-      data = {
-        token,
-        user: userPayload,
-        githubUsername: params.get("githubUsername") || userPayload.githubUsername,
-        githubToken: params.get("githubToken") || undefined,
-      };
-    }
-
-    const nextUser = stripSensitive(data.user as LocalUser | AuthUser);
-    persistSession(data.token, nextUser);
-    setUser(nextUser);
-
-    await persistGithubSettings(data.githubUsername, data.githubToken);
-    return { ...data, user: nextUser };
+    // GitHub now redirects straight back into the backend, which sets the
+    // cookie itself and redirects to /dashboard — no code/state handling
+    // needed on the frontend anymore.
+    window.location.assign(`${getApiOrigin()}/auth/github`);
   };
 
   const logout = (): void => {
     void api.post("/auth/logout").catch(() => {});
     clearSession();
+    localStorage.removeItem(STORAGE_KEYS.localSession);
     setUser(null);
   };
 
@@ -338,7 +239,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         login,
         signup,
         loginWithGithub,
-        completeGithubLogin,
         logout,
         refreshUser,
       }}
