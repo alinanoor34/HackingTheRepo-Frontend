@@ -1,12 +1,23 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useNotifications } from "../context/NotificationContext";
 import "./NotificationBell.css";
 
 export default function NotificationBell(): React.ReactElement {
   const { notifications, markRead } = useNotifications();
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
 
   const unread = notifications.filter((n) => !n.read).length;
+
+  const handleItemClick = (n: (typeof notifications)[number]) => {
+    markRead(n.id);
+    setOpen(false);
+    const jobId = n.meta?.jobId;
+    if (typeof jobId === "string") {
+      navigate(`/jobs/${jobId}`);
+    }
+  };
 
   return (
     <div className="notif-bell">
@@ -24,7 +35,11 @@ export default function NotificationBell(): React.ReactElement {
           <div className="bell-list">
             {notifications.length === 0 && <div className="bell-empty">No notifications</div>}
             {notifications.map((n) => (
-              <div key={n.id} className={`bell-item ${n.read ? "read" : "unread"}`} onClick={() => markRead(n.id)}>
+              <div
+                key={n.id}
+                className={`bell-item ${n.read ? "read" : "unread"}`}
+                onClick={() => handleItemClick(n)}
+              >
                 <div className="bell-item-title">{n.title}</div>
                 {n.body && <div className="bell-item-body">{n.body}</div>}
               </div>
