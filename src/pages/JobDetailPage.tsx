@@ -55,6 +55,7 @@ export default function JobDetailPage() {
   useEffect(() => {
     const status = job?.status;
     if (status !== "running" && status !== "queued") return;
+    if (typeof EventSource === "undefined") return; // not available in this environment
 
     const source = new EventSource(`${api.defaults.baseURL}/jobs/${id}/stream`, {
       withCredentials: true,
