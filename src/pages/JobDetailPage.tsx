@@ -52,11 +52,6 @@ export default function JobDetailPage() {
     fetchJob();
   }, [id, fetchJob]);
 
-  /**
-   * Live progress via Server-Sent Events — replaces polling entirely.
-   * The backend proxies RepoMind's /stream/{job_id} feed, so updates
-   * arrive the instant something changes instead of up to 5s late.
-   */
   useEffect(() => {
     const status = job?.status;
     if (status !== "running" && status !== "queued") return;
@@ -74,7 +69,7 @@ export default function JobDetailPage() {
       source.close();
     });
 
-    source.onerror = () => source.close(); // browser auto-retries on transient network errors
+    source.onerror = () => source.close();
 
     return () => source.close();
   }, [job?.status, id, fetchJob]);
@@ -184,9 +179,7 @@ export default function JobDetailPage() {
       </div>
 
       <div className="job-detail-grid">
-        {/* Left: details */}
         <div className="job-detail-main">
-          {/* Info cards */}
           <div className="detail-section card">
             <div className="detail-row">
               <span className="detail-key">Instruction</span>
@@ -214,7 +207,6 @@ export default function JobDetailPage() {
             </div>
           </div>
 
-          {/* PR link */}
           {job.prUrl && (
             <div className="pr-success card">
               <div className="pr-success-icon">🎉</div>
@@ -225,14 +217,11 @@ export default function JobDetailPage() {
                   target="_blank"
                   rel="noopener noreferrer"
                   className="pr-url-link"
-                >
                   {job.prUrl} ↗
-                </a>
               </div>
             </div>
           )}
 
-          {/* Diff summary or preview */}
           {job.diff ? (
             <div className="diff-card card">
               <h3 className="diff-title">
@@ -251,7 +240,6 @@ export default function JobDetailPage() {
             )
           )}
 
-          {/* Preview review actions */}
           {job.diffSummary && !job.prUrl && (
             <div className="preview-card card">
               <h3 className="diff-title">Review before opening PR</h3>
@@ -270,7 +258,6 @@ export default function JobDetailPage() {
             </div>
           )}
 
-          {/* Error */}
           {job.errorMessage && (
             <div className="error-card card">
               <div className="error-icon">⚠️</div>
@@ -281,7 +268,6 @@ export default function JobDetailPage() {
             </div>
           )}
 
-          {/* Running indicator */}
           {(job.status === "running" || job.status === "queued") && (
             <div className="running-card card">
               <div className="running-anim">
@@ -299,9 +285,7 @@ export default function JobDetailPage() {
           )}
         </div>
 
-        {/* Right: refine + history */}
         <div className="job-detail-side">
-          {/* Refinement */}
           {(job.status === "completed" || job.status === "refined") && (
             <div className="card refine-card">
               <h3 className="refine-title">🔁 Refine PR</h3>
@@ -325,7 +309,6 @@ export default function JobDetailPage() {
             </div>
           )}
 
-          {/* Refinement history */}
           {(job.refinements?.length ?? 0) > 0 && (
             <div className="card">
               <h3 className="refine-title">Refinement History</h3>
@@ -343,7 +326,6 @@ export default function JobDetailPage() {
             </div>
           )}
 
-          {/* Raw job id + manual poll */}
           <div className="card" style={{ padding: 14 }}>
             <div
               style={{ fontSize: 11, color: "var(--text3)", marginBottom: 8 }}
