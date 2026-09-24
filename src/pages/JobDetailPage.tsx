@@ -1,7 +1,6 @@
 import {
   useState,
   useEffect,
-  useRef,
   useCallback,
   type MouseEventHandler,
 } from "react";
@@ -57,9 +56,12 @@ export default function JobDetailPage() {
     if (status !== "running" && status !== "queued") return;
     if (typeof EventSource === "undefined") return; // not available in this environment
 
-    const source = new EventSource(`${api.defaults.baseURL}/jobs/${id}/stream`, {
-      withCredentials: true,
-    });
+    const source = new EventSource(
+      `${api.defaults.baseURL}/jobs/${id}/stream`,
+      {
+        withCredentials: true,
+      },
+    );
 
     source.addEventListener("progress", () => {
       fetchJob(true);
@@ -213,12 +215,10 @@ export default function JobDetailPage() {
               <div className="pr-success-icon">🎉</div>
               <div>
                 <div className="pr-success-title">Pull Request Opened!</div>
-                
-                  href={job.prUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="pr-url-link"
-                  {job.prUrl} ↗
+                href={job.prUrl}
+                target="_blank" rel="noopener noreferrer"
+                className="pr-url-link"
+                {job.prUrl} ↗
               </div>
             </div>
           )}
