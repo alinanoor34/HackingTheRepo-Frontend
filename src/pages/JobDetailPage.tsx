@@ -243,14 +243,6 @@ export default function JobDetailPage() {
               </div>
             )
           )}
-          {job.diffSummary && (
-            <div className="diff-card card">
-              <h3 className="diff-title">
-                {job.prUrl ? "Diff Summary" : "AI-generated Diff Preview"}
-              </h3>
-              <p className="diff-text">{job.diffSummary}</p>
-            </div>
-          )}
 
           {/* Preview review actions */}
           {job.diffSummary && !job.prUrl && (
