@@ -28,7 +28,6 @@ export default function JobDetailPage() {
   const [refining, setRefining] = useState(false);
   const [openingPr, setOpeningPr] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const pollingRef = useRef<number | null>(null);
 
   const fetchJob = useCallback(
     async (poll = false): Promise<Job | undefined> => {
@@ -53,24 +52,32 @@ export default function JobDetailPage() {
     fetchJob();
   }, [id, fetchJob]);
 
-  /** Poll while job is in progress; clear when terminal or unmount */
+  /**
+   * Live progress via Server-Sent Events — replaces polling entirely.
+   * The backend proxies RepoMind's /stream/{job_id} feed, so updates
+   * arrive the instant something changes instead of up to 5s late.
+   */
   useEffect(() => {
     const status = job?.status;
     if (status !== "running" && status !== "queued") return;
 
-    pollingRef.current = window.setInterval(async () => {
-      const updated = await fetchJob(true);
-      if (updated?.status === "completed" || updated?.status === "failed") {
-        if (pollingRef.current !== null) clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-    }, 5000);
+    const source = new EventSource(`${api.defaults.baseURL}/jobs/${id}/stream`, {
+      withCredentials: true,
+    });
 
-    return () => {
-      if (pollingRef.current !== null) clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    };
-  }, [job?.status, fetchJob]);
+    source.addEventListener("progress", () => {
+      fetchJob(true);
+    });
+
+    source.addEventListener("close", () => {
+      fetchJob(true);
+      source.close();
+    });
+
+    source.onerror = () => source.close(); // browser auto-retries on transient network errors
+
+    return () => source.close();
+  }, [job?.status, id, fetchJob]);
 
   const handleRefine: MouseEventHandler<HTMLButtonElement> = async () => {
     if (!refineText.trim()) return;
@@ -213,7 +220,7 @@ export default function JobDetailPage() {
               <div className="pr-success-icon">🎉</div>
               <div>
                 <div className="pr-success-title">Pull Request Opened!</div>
-                <a
+                
                   href={job.prUrl}
                   target="_blank"
                   rel="noopener noreferrer"
@@ -285,8 +292,7 @@ export default function JobDetailPage() {
               <div>
                 <div className="running-title">Agent is working...</div>
                 <div className="running-sub">
-                  Status updates every 5 seconds. The bot is cloning, planning,
-                  and applying changes.
+                  Live updates as the bot clones, plans, and applies changes.
                 </div>
               </div>
             </div>

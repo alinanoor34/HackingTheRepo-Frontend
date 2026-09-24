@@ -56,9 +56,7 @@ describe("NewJobPage", () => {
       "Add unit tests",
     );
 
-    await userEvent.click(
-      screen.getByLabelText(/review the ai-generated diff/i),
-    );
+    expect(screen.getByLabelText(/review the ai-generated diff/i)).toBeChecked();
 
     await userEvent.click(
       screen.getByRole("button", { name: /create preview job/i }),

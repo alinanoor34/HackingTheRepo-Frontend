@@ -48,7 +48,7 @@ export default function NewJobPage() {
     instruction: "",
     branchName: "",
     prTitle: "",
-    previewBeforePush: false,
+    previewBeforePush: true,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
