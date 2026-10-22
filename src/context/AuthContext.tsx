@@ -11,9 +11,12 @@ import type { ApiErrorResponse, AuthResponse, AuthUser, LocalUser } from "../typ
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<AuthResponse>;
+  login: (email: string, password: string, remember?: boolean) => Promise<AuthResponse>;
   signup: (username: string, email: string, password: string) => Promise<AuthResponse>;
   loginWithGithub: () => void;
+  loginWithGoogle: () => void;
+  requestPasswordReset: (email: string) => Promise<void>;
+  resetPassword: (token: string, password: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<AuthUser | null>;
 }
@@ -40,6 +43,19 @@ const DEMO_USER = {
 /** GitHub OAuth is enabled unless explicitly disabled. */
 export const GITHUB_OAUTH_ENABLED =
   import.meta.env.VITE_GITHUB_OAUTH_ENABLED !== "false";
+
+/**
+ * Google OAuth is opt-in: set VITE_GOOGLE_OAUTH_ENABLED=true once the backend
+ * exposes GET /auth/google and /auth/google/callback.
+ */
+export const GOOGLE_OAUTH_ENABLED =
+  import.meta.env.VITE_GOOGLE_OAUTH_ENABLED === "true";
+
+/**
+ * The offline localStorage account fallback is a development convenience only.
+ * It must never run in a production build (it stores credentials client-side).
+ */
+const LOCAL_FALLBACK_ENABLED = Boolean(import.meta.env.DEV);
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -87,6 +103,7 @@ function ensureLocalUsers(): LocalUser[] {
 }
 
 function shouldUseLocalFallback(error: unknown): boolean {
+  if (!LOCAL_FALLBACK_ENABLED) return false;
   const apiError = error as ApiErrorResponse;
   return !apiError.response || (apiError.response.status ?? 0) >= 500;
 }
@@ -123,9 +140,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = async (email: string, password: string): Promise<AuthResponse> => {
+  const login = async (
+    email: string,
+    password: string,
+    remember?: boolean
+  ): Promise<AuthResponse> => {
     try {
-      const { data } = await api.post("/auth/login", { email, password });
+      const payload: { email: string; password: string; remember?: boolean } = {
+        email,
+        password,
+      };
+      if (typeof remember === "boolean") payload.remember = remember;
+
+      const { data } = await api.post("/auth/login", payload);
       const nextUser = stripSensitive(data.user as LocalUser | AuthUser);
       localStorage.removeItem(STORAGE_KEYS.localSession);
       persistSession(nextUser);
@@ -193,13 +220,33 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const loginWithGithub = (): void => {
     if (!GITHUB_OAUTH_ENABLED) {
-      throw new Error("GitHub OAuth is not enabled yet.");
+      throw new Error("GitHub sign-in is not enabled yet.");
     }
 
-    // GitHub now redirects straight back into the backend, which sets the
+    // GitHub redirects straight back into the backend, which sets the
     // cookie itself and redirects to /dashboard — no code/state handling
-    // needed on the frontend anymore.
+    // needed on the frontend.
     window.location.assign(`${getApiOrigin()}/auth/github`);
+  };
+
+  const loginWithGoogle = (): void => {
+    if (!GOOGLE_OAUTH_ENABLED) {
+      throw new Error("Google sign-in is not enabled yet.");
+    }
+
+    // Same pattern as GitHub: the backend runs the OAuth flow, sets the
+    // httpOnly session cookie and redirects to /dashboard (or to
+    // /login?error=google_failed on failure).
+    window.location.assign(`${getApiOrigin()}/auth/google`);
+  };
+
+  /** Always resolves the same way for known/unknown emails (no account enumeration). */
+  const requestPasswordReset = async (email: string): Promise<void> => {
+    await api.post("/auth/forgot-password", { email });
+  };
+
+  const resetPassword = async (token: string, password: string): Promise<void> => {
+    await api.post("/auth/reset-password", { token, password });
   };
 
   const logout = (): void => {
@@ -239,6 +286,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
         login,
         signup,
         loginWithGithub,
+        loginWithGoogle,
+        requestPasswordReset,
+        resetPassword,
         logout,
         refreshUser,
       }}
